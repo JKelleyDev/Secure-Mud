@@ -1,0 +1,75 @@
+# Monsters and NPCs.
+#
+# Format: "[mob: <id>]" then stats.
+#   name     — display name including article ("a wild boar", "the Ember Lich")
+#   hp       — starting and max hit points
+#   atk      — base attack power (damage = atk - target.def +/- 2)
+#   defn     — defense; reduces incoming damage
+#   xp       — experience awarded on kill
+#   gold     — gold drop range "min-max"
+#   loot     — drop table "item_id=chance, ..." (chance is 0.0-1.0)
+#   respawn  — seconds before re-spawning after death (0 = never)
+#   boss     — true if this is a storyline boss (gets [BOSS] tag, broadcast on kill)
+#   npc      — true if this is a non-combat NPC (talkable, can't be attacked)
+#
+# NPCs (npc: true) ignore combat stats but still need them set;
+# convention: hp: 9999, atk: 0, defn: 999, respawn: 0.
+
+[mob: wild_boar]
+name: a wild boar
+hp: 25
+atk: 5
+defn: 1
+xp: 12
+gold: 2-6
+respawn: 30
+
+[mob: goblin_scout]
+name: a goblin scout
+hp: 30
+atk: 7
+defn: 2
+xp: 18
+gold: 4-10
+loot: goblin_ear=0.7
+respawn: 40
+
+[mob: dire_wolf]
+name: a dire wolf
+hp: 45
+atk: 11
+defn: 3
+xp: 30
+gold: 6-14
+loot: wolf_pelt=0.8
+respawn: 50
+
+[mob: skeleton]
+name: a skeleton warrior
+hp: 60
+atk: 14
+defn: 5
+xp: 45
+gold: 10-20
+respawn: 60
+
+[mob: ember_lich]
+name: the Ember Lich
+hp: 220
+atk: 26
+defn: 10
+xp: 400
+gold: 200-400
+loot: lich_phylactery=1.0, ember_blade=1.0
+respawn: 600
+boss: true
+
+[mob: hooded_figure]
+name: a hooded figure
+hp: 9999
+atk: 0
+defn: 999
+xp: 0
+gold: 0-0
+respawn: 0
+npc: true

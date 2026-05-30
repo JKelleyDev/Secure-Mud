@@ -1,0 +1,79 @@
+# Items — weapons, armor, consumables, quest objects, misc.
+#
+# Format: "[item: <id>]" then fields.
+#   name   — display name (lowercase, the engine prints it in sentences)
+#   type   — weapon | armor | consumable | quest | misc
+#   atk    — (weapon only) bonus added to player ATK when equipped
+#   defn   — (armor only) bonus added to player DEF when equipped
+#   heal   — (consumable only) HP restored on 'use'
+#   price  — shop buy price in gold. Sell price is price // 2.
+#   desc   — short blurb shown in the shop list.
+#
+# Quest items use type: quest. They have no combat effect; they're
+# consumed by quest turn-ins.
+
+[item: rusty_sword]
+name: rusty sword
+type: weapon
+atk: 3
+price: 10
+desc: Better than fists. Barely.
+
+[item: iron_sword]
+name: iron sword
+type: weapon
+atk: 8
+price: 75
+desc: A reliable blade.
+
+[item: ember_blade]
+name: Ember Blade
+type: weapon
+atk: 22
+price: 0
+desc: Forged from the Lich's heart. Glows with heat.
+
+[item: leather_armor]
+name: leather armor
+type: armor
+defn: 4
+price: 40
+desc: Supple and protective.
+
+[item: plate_armor]
+name: plate armor
+type: armor
+defn: 12
+price: 300
+desc: Heavy, dependable steel.
+
+[item: health_potion]
+name: health potion
+type: consumable
+heal: 30
+price: 20
+desc: Restores 30 HP.
+
+[item: torch]
+name: torch
+type: misc
+price: 5
+desc: Lights the dark.
+
+[item: wolf_pelt]
+name: wolf pelt
+type: quest
+price: 8
+desc: A thick grey pelt.
+
+[item: goblin_ear]
+name: goblin ear
+type: quest
+price: 3
+desc: Proof of a goblin slain.
+
+[item: lich_phylactery]
+name: lich phylactery
+type: quest
+price: 0
+desc: A pulsing dark gem. The source of the Lich's power.

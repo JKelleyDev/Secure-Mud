@@ -1,0 +1,48 @@
+# Quests — given by NPCs in the tavern, completed by turn-in.
+#
+# Format: "[quest: <id>]" then fields.
+#   name         — display name
+#   giver        — mob id of the NPC who gives this quest
+#   needs        — items required at turn-in: "item_id=count, ..."
+#   reward_gold  — gold paid on turn-in
+#   reward_xp    — xp granted on turn-in
+#   reward_item  — single item id granted on turn-in (optional)
+#   next         — id of the quest that unlocks after this (optional)
+#   storyline    — phase id to flip the world into on turn-in (optional;
+#                  must match an id in storyline.txt)
+#   desc         — quest text the NPC says when offering it
+#
+# Important: the offer order is currently hardcoded in
+# server/engine.py:_current_quest_offer (the "chain" list). If you add a
+# brand new chain of quests, that list needs updating too. See README.
+
+[quest: cull_the_pack]
+name: Cull the Pack
+giver: hooded_figure
+needs: wolf_pelt=3
+reward_gold: 60
+reward_xp: 80
+reward_item: iron_sword
+next: goblin_menace
+desc: Bring me 3 wolf pelts. The dire wolves grow bold.
+
+[quest: goblin_menace]
+name: The Goblin Menace
+giver: hooded_figure
+needs: goblin_ear=5
+reward_gold: 120
+reward_xp: 150
+reward_item: leather_armor
+next: slay_the_lich
+desc: The goblins serve a darker master. Bring me 5 goblin ears.
+
+[quest: slay_the_lich]
+name: Slay the Ember Lich
+giver: hooded_figure
+needs: lich_phylactery=1
+reward_gold: 1000
+reward_xp: 1000
+reward_item: plate_armor
+storyline: lich_slain
+desc: The Ember Lich stirs in the Ashen Crypt. Destroy it and bring its
+  phylactery. The fate of Emberhold depends on it.

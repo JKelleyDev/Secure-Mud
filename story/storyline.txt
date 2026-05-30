@@ -1,0 +1,18 @@
+# Storyline phases — the world's evolving narrative.
+#
+# Format: "[storyline: <id>]" with a 'desc' field. The desc is shown in
+# the town square (ambient text on 'look') while that phase is active,
+# and is broadcast to all players when a quest flips the world into
+# that phase (see the 'storyline:' field on quests in quests.txt).
+#
+# The current phase is persisted to data/world_state.json. The starting
+# phase is 'rising'. Quests with `storyline: <id>` flip the world into
+# that phase on turn-in. To branch the story, add a new phase here,
+# point a quest at it, and write narrative for what's different.
+
+[storyline: rising]
+desc: The Ember Lich gathers power. Beasts grow restless across the Wilds.
+
+[storyline: lich_slain]
+desc: The Ember Lich is destroyed! Emberhold celebrates, but in the ashes
+  of the crypt, something new begins to stir...

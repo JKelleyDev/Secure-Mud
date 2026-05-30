@@ -1,0 +1,78 @@
+# Emberhold rooms — the world map.
+#
+# Format: each room is "[room: <id>]" followed by key: value lines.
+#   title    — display name shown on 'look'
+#   region   — grouping tag (used by future region events / clan control)
+#   exits    — "dir=room_id, dir=room_id"  (n/s/e/w/up/down)
+#   mobs     — comma-separated mob ids that spawn here (optional)
+#   shop     — comma-separated item ids for sale here (optional)
+#   desc     — room description. May continue on indented lines.
+#
+# To add a new room: copy any block, give it a unique id, link it from
+# another room's exits, and (if relevant) reference its mobs/shop ids.
+# A room with a mob id but no matching mob entry will crash on load —
+# define the mob in mobs.txt first.
+
+[room: town_square]
+title: Emberhold Town Square
+region: emberhold
+exits: north=market, east=gate, south=tavern, west=guildhall
+desc: Cobblestones radiate from a cracked fountain. Banners of three clans
+  snap in the wind. Roads lead north to the market, east to the gates,
+  south to the tavern, and west to the guildhall.
+
+[room: market]
+title: The Sunken Market
+region: emberhold
+exits: south=town_square
+shop: rusty_sword, iron_sword, leather_armor, health_potion, torch
+desc: Stalls crowd a stepped plaza. A weaponsmith eyes your coin purse.
+
+[room: tavern]
+title: The Gilded Tankard
+region: emberhold
+exits: north=town_square
+mobs: hooded_figure
+desc: Warm light, the smell of stew, and a barkeep named Mara who knows
+  every rumor in the realm. A hooded figure sits in the corner.
+
+[room: guildhall]
+title: Hall of Clans
+region: emberhold
+exits: east=town_square
+desc: Three great doors marked by sigils: the Ironbound, the Ashveil, and
+  the Verdant Pact. Here clans are forged and joined.
+
+[room: gate]
+title: Emberhold East Gate
+region: emberhold
+exits: west=town_square, east=wilds_path
+desc: A portcullis opens onto the Wilds. A guard warns of growing beast activity.
+
+[room: wilds_path]
+title: Wilds Path
+region: wilds
+exits: west=gate, east=deep_wilds, north=ruins_entrance
+mobs: wild_boar, goblin_scout
+desc: A muddy track winds between gnarled trees. Something rustles nearby.
+
+[room: deep_wilds]
+title: The Deep Wilds
+region: wilds
+exits: west=wilds_path
+mobs: dire_wolf, goblin_scout
+desc: The canopy chokes the light. Eyes gleam between the trunks.
+
+[room: ruins_entrance]
+title: Ruined Archway
+region: ruins
+exits: south=wilds_path, down=crypt
+desc: Shattered columns mark a sunken temple. Cold air breathes from below.
+
+[room: crypt]
+title: The Ashen Crypt
+region: ruins
+exits: up=ruins_entrance
+mobs: skeleton, ember_lich
+desc: Bones litter the floor. At the far end, a throne of black iron waits.
+  This is where the Ember Lich is said to stir.

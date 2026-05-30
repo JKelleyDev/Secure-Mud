@@ -1,0 +1,33 @@
+# Joinable clans. Players pledge once in the Hall of Clans (guildhall).
+#
+# Format: "[clan: <id>]" then fields.
+#   name   — display name
+#   sigil  — single-character symbol shown next to the name
+#   bonus  — short description of the mechanical benefit (display only)
+#   desc   — lore blurb
+#
+# IMPORTANT: adding a clan here only gives it a name and lore.
+# The actual bonus (HP / gold / heal multipliers) is implemented in
+# server/models.py on the Player class:
+#   - effective_max_hp     (ironbound  -> +10% max HP)
+#   - gold_multiplier()    (ashveil    -> +15% gold)
+#   - heal_multiplier()    (verdant    -> +20% healing)
+# To add a real new clan bonus, also update those methods.
+
+[clan: ironbound]
+name: The Ironbound
+sigil: ⚒
+bonus: +10% max HP
+desc: Warriors of stone and steel.
+
+[clan: ashveil]
+name: The Ashveil
+sigil: ☠
+bonus: +15% gold from kills
+desc: Shadow-walkers and reavers.
+
+[clan: verdant]
+name: The Verdant Pact
+sigil: ❧
+bonus: +20% healing
+desc: Keepers of the wild.
