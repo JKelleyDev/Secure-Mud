@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""SecureMUD server. TLS-encrypted line protocol. One thread per client.
+"""SecureMUD server. TLS + JSON-line protocol. One thread per client.
 
 First run generates a self-signed cert (server.crt/server.key) if absent.
-All gameplay traffic is encrypted end-to-end (TLS 1.2+)."""
+All gameplay traffic is encrypted end-to-end (TLS 1.2+).
+
+Wire protocol: client sends raw command lines; server sends one JSON
+event per line (see server/protocol.py). Strings handed to Client.send
+are auto-wrapped as 'narrate' events for back-compat with the engine's
+existing string returns."""
 import socket, ssl, threading, os, sys
 sys.path.insert(0, os.path.dirname(__file__))
 from engine import Engine, col
+import protocol
 
 HOST = os.environ.get("MUD_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MUD_PORT", "4443"))
@@ -57,9 +63,13 @@ class Client:
         self.conn = conn
         self.buf = b""
         self.session = None
-    def send(self, msg):
+    def send(self, payload):
+        """Send a JSON event. Accepts a dict (event) or a str (auto-wrapped
+        as a 'narrate' event so legacy callers keep working)."""
+        if isinstance(payload, str):
+            payload = protocol.narrate(payload)
         try:
-            self.conn.sendall((msg + "\r\n").encode())
+            self.conn.sendall(protocol.encode(payload))
         except OSError:
             pass
     def recv_line(self):
@@ -95,12 +105,12 @@ def handle_client(conn, addr):
                 c.send(col("Format: login <name> <pass>  OR  register <name> <pass>", "red"))
         # ---- main loop ----
         while True:
-            c.send("")  # blank line as prompt spacer
             line = c.recv_line()
             if line is None: break
             out = ENGINE.handle(c.session, line)
             if out == "__QUIT__":
                 c.send(col("Farewell, adventurer.", "cyn"))
+                c.send(protocol.quit_())
                 break
             if out:
                 c.send(out)

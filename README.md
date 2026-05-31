@@ -8,7 +8,7 @@ and persists to disk so progress survives restarts.
 ## Quick start
 
 ```bash
-pip install cryptography        # for self-signed cert generation (or have openssl)
+pip install cryptography textual    # cryptography (server); textual (client UI)
 
 # 1. Start the server (generates server.crt/server.key on first run)
 python3 server/server.py                 # listens on 0.0.0.0:4443
@@ -16,6 +16,11 @@ python3 server/server.py                 # listens on 0.0.0.0:4443
 # 2. Connect a client (in another terminal / another machine)
 python3 client/client.py <host> 4443
 ```
+
+The client is a full-screen [Textual](https://textual.textualize.io/) TUI —
+a four-panel layout (narrative · scene art · map · stats) with an input
+bar at the bottom. The server speaks a JSON-line protocol (see
+`server/protocol.py`); a raw `nc` connection will see JSON, not prose.
 
 Override host/port with env vars: `MUD_HOST=0.0.0.0 MUD_PORT=4443 python3 server/server.py`
 
@@ -36,9 +41,10 @@ help                           # full command list
 │   ├── server.py           # TLS socket listener + per-client thread
 │   ├── engine.py           # command dispatch, combat, ticks, broadcast
 │   ├── models.py           # Player class, persistence, password hashing
+│   ├── protocol.py         # JSON event types sent to the client
 │   └── world.py            # story content loader (DO NOT edit by hand)
 ├── client/
-│   └── client.py           # TLS terminal client
+│   └── client.py           # Textual TUI client (4-panel layout)
 ├── story/                  # creative-writer territory — plain text
 │   ├── rooms.txt           # rooms, exits, region tags, shop assignments
 │   ├── items.txt           # weapons, armor, consumables, quest objects
