@@ -1,5 +1,16 @@
 """Game engine: holds live state, parses commands, runs combat & ticks.
-Thread-safe via a single global lock held during command execution."""
+
+Thread-safe via a single global lock held during command execution.
+
+Emits structured events (see server/protocol.py) for the panel-aware client:
+  - `stats`     after every successful command (auto, in handle())
+  - `room`      after look / move / death / flee — refreshes Narrative + Map
+  - `encounter` on attack / talk / scene-clear   — refreshes Scene panel
+
+Commands still return ANSI-colored narrative strings for the Narrative
+panel. The auto-stats emission keeps the Stats panel in sync without
+sprinkling refresh calls through every state-mutating command.
+"""
 import random, time, threading, copy
 from world import ROOMS, ITEMS, MOBS, QUESTS, CLANS, STORYLINE
 import models
@@ -24,7 +35,7 @@ class MobInstance:
 class Session:
     """A connected client."""
     def __init__(self, send_fn):
-        self.send = send_fn          # callable(str)
+        self.send = send_fn          # callable(str | dict) — str auto-wrapped as narrate
         self.player = None
         self.in_combat = None        # (room_id, mob_id)
 
@@ -34,11 +45,52 @@ class Engine:
         self.players = models.load_players()
         self.world = models.load_world_state()
         self.sessions = {}           # player_name -> Session
-        # live mobs per room
-        self.room_mobs = {}
+        self.room_mobs = {}          # room_id -> [MobInstance]
         for rid, r in ROOMS.items():
             self.room_mobs[rid] = [MobInstance(mid) for mid in r.get("mobs", [])]
         threading.Thread(target=self._ticker, daemon=True).start()
+
+    # ---------------- structured event constructors ----------------
+    def stats_event(self, p):
+        """Snapshot of player stats for the Stats panel."""
+        return {
+            "type": "stats",
+            "name": p.name,
+            "level": p.level,
+            "hp": p.hp, "max_hp": p.effective_max_hp,
+            "atk": p.atk, "defense": p.defense,
+            "xp": p.xp, "xp_next": models.xp_for_level(p.level),
+            "gold": p.gold,
+            "clan": CLANS[p.clan]["name"] if p.clan else None,
+            "weapon": ITEMS[p.equipped["weapon"]]["name"] if p.equipped["weapon"] else None,
+            "armor": ITEMS[p.equipped["armor"]]["name"] if p.equipped["armor"] else None,
+        }
+
+    def room_event(self, p):
+        """Snapshot of the player's current room — used by Narrative + Map."""
+        r = ROOMS[p.room]
+        live = [m for m in self.room_mobs[p.room] if m.alive]
+        others = [n for n, s in self.sessions.items()
+                  if s.player and s.player.room == p.room and n != p.name]
+        return {
+            "type": "room",
+            "id": p.room,
+            "title": r["title"],
+            "desc": r["desc"],
+            # exit values are destination room *titles* so the Map can label them
+            "exits": {d: ROOMS[dest]["title"] for d, dest in r["exits"].items()},
+            "mobs": [{"id": m.id, "name": m.name,
+                      "boss": bool(MOBS[m.id].get("boss")),
+                      "npc": bool(MOBS[m.id].get("npc"))}
+                     for m in live],
+            "others": others,
+            "shop": "shop" in r,
+            "storyline": STORYLINE[self.world["storyline"]] if p.room == "town_square" else None,
+        }
+
+    def encounter_event(self, art, caption=None):
+        """Scene-panel update. art=None clears the scene."""
+        return {"type": "encounter", "art": art, "caption": caption}
 
     # ---------------- broadcasting ----------------
     def broadcast_room(self, room_id, msg, exclude=None):
@@ -55,7 +107,6 @@ class Engine:
         while True:
             time.sleep(5)
             with self.lock:
-                # regen hp for non-combat players
                 for s in self.sessions.values():
                     p = s.player
                     if p and not s.in_combat and p.hp < p.effective_max_hp:
@@ -96,9 +147,14 @@ class Engine:
     def handle(self, session, line):
         with self.lock:
             try:
-                return self._dispatch(session, line)
+                out = self._dispatch(session, line)
             except Exception as e:
                 return col(f"[error] {e}", "red")
+            # Single point of stats emission — keeps the panel in sync
+            # without scattering refresh calls through every cmd_*.
+            if session.player and out != "__QUIT__":
+                session.send(self.stats_event(session.player))
+            return out
 
     def _dispatch(self, session, line):
         p = session.player
@@ -126,28 +182,10 @@ class Engine:
             "  say <msg> | who | map | help | quit")
 
     def cmd_look(self, p, s, a):
-        return self.render_room(p)
-
-    def render_room(self, p):
-        r = ROOMS[p.room]
-        out = [col("\n" + r["title"], "bold"), r["desc"]]
-        # storyline ambiance
-        if p.room == "town_square":
-            out.append(col(STORYLINE[self.world["storyline"]], "yel"))
-        # mobs
-        live = [m for m in self.room_mobs[p.room] if m.alive]
-        for m in live:
-            tag = col(" [BOSS]", "red") if MOBS[m.id].get("boss") else ""
-            out.append(col(f"  {m.name} is here.{tag}", "red"))
-        # other players
-        others = [n for n, s in self.sessions.items()
-                  if s.player and s.player.room == p.room and n != p.name]
-        for o in others:
-            out.append(col(f"  {o} is here.", "grn"))
-        if "shop" in r:
-            out.append(col("  A shopkeeper offers wares (type 'shop').", "yel"))
-        out.append(col("Exits: " + ", ".join(r["exits"].keys()), "cyn"))
-        return "\n".join(out)
+        # The Narrative panel renders the room from the structured event;
+        # no need to send a separate text version.
+        s.send(self.room_event(p))
+        return ""
 
     def cmd_go(self, p, s, a):
         if s.in_combat:
@@ -161,8 +199,10 @@ class Engine:
         self.broadcast_room(p.room, col(f"{p.name} leaves {d}.", "dim"), exclude=p.name)
         p.room = exits[d]
         self.broadcast_room(p.room, col(f"{p.name} arrives.", "dim"), exclude=p.name)
-        return self.render_room(p)
-    # directional shortcuts
+        s.send(self.encounter_event(None))   # leaving the previous scene
+        s.send(self.room_event(p))
+        return ""
+
     def cmd_north(self,p,s,a): return self.cmd_go(p,s,["north"])
     def cmd_south(self,p,s,a): return self.cmd_go(p,s,["south"])
     def cmd_east(self,p,s,a):  return self.cmd_go(p,s,["east"])
@@ -171,6 +211,8 @@ class Engine:
     def cmd_down(self,p,s,a):  return self.cmd_go(p,s,["down"])
 
     def cmd_score(self, p, s, a):
+        # Stats panel auto-refreshes after every command; this readout
+        # remains for the Narrative scrollback.
         clan = CLANS[p.clan]["name"] if p.clan else "None"
         nxt = models.xp_for_level(p.level)
         return col(f"\n{p.name}  (Level {p.level})\n", "bold") + (
@@ -206,10 +248,10 @@ class Engine:
             return col("No such target here.", "red")
         if MOBS[m.id].get("npc"):
             return col("That's not something you can fight.", "yel")
-        # gate the lich behind the quest
         if m.id == "ember_lich" and p.quests.get("slay_the_lich") != "active":
             return col("An unseen force repels you. (Accept the quest 'Slay the Ember Lich' first.)", "mag")
         s.in_combat = (p.room, m.id)
+        s.send(self.encounter_event(m.id))
         return self._combat_round(p, s, m)
 
     def _combat_round(self, p, s, m):
@@ -219,7 +261,6 @@ class Engine:
         out.append(col(f"You hit {m.name} for {dmg}. ({max(0,m.hp)}/{m.max_hp})", "grn"))
         if m.hp <= 0:
             return self._kill_mob(p, s, m, out)
-        # mob retaliates
         mdmg = max(1, MOBS[m.id]["atk"] - p.defense + random.randint(-2, 2))
         p.hp -= mdmg
         out.append(col(f"{m.name} hits you for {mdmg}. (HP {max(0,p.hp)}/{p.effective_max_hp})", "red"))
@@ -246,6 +287,7 @@ class Engine:
         if md.get("boss") and m.id == "ember_lich":
             self.broadcast_all(f"{p.name} has slain the Ember Lich! The realm trembles.")
         self.broadcast_room(p.room, col(f"{p.name} slays {m.name}!", "dim"), exclude=p.name)
+        s.send(self.encounter_event(None))   # scene clears once the target is down
         return "\n".join(out)
 
     def _die(self, p, s, out):
@@ -255,6 +297,8 @@ class Engine:
         p.hp = p.effective_max_hp
         p.room = "town_square"
         out.append(col(f"\nYou have died! You lose {lost} gold and wake in Emberhold.", "red"))
+        s.send(self.encounter_event(None))
+        s.send(self.room_event(p))   # respawn relocates the player; refresh Map
         return "\n".join(out)
 
     def cmd_flee(self, p, s, a):
@@ -262,7 +306,9 @@ class Engine:
         s.in_combat = None
         exits = list(ROOMS[p.room]["exits"].values())
         p.room = random.choice(exits)
-        return col("You flee!", "yel") + "\n" + self.render_room(p)
+        s.send(self.encounter_event(None))
+        s.send(self.room_event(p))
+        return col("You flee!", "yel")
 
     # ---- items ----
     def cmd_get(self, p, s, a):
@@ -345,7 +391,8 @@ class Engine:
         live = [m for m in self.room_mobs[p.room] if m.alive and MOBS[m.id].get("npc")]
         if not live:
             return "There's no one here to talk to."
-        # the hooded figure is the quest giver
+        npc = live[0]
+        s.send(self.encounter_event(npc.id))
         offer = self._current_quest_offer(p)
         if offer is None:
             return col('The hooded figure nods. "You have done all I asked... for now."', "mag")
@@ -358,7 +405,6 @@ class Engine:
         for qid in chain:
             st = p.quests.get(qid)
             if st is None:
-                # only offer if previous done
                 idx = chain.index(qid)
                 if idx == 0 or p.quests.get(chain[idx-1]) == "done":
                     return qid
@@ -375,7 +421,6 @@ class Engine:
         return col(f"Quest accepted: {QUESTS[qid]['name']}", "grn")
 
     def cmd_turnin(self, p, s, a):
-        # must be near the giver
         if not any(MOBS[m.id].get("npc") for m in self.room_mobs[p.room] if m.alive):
             return "You must be with the quest giver (the tavern)."
         for qid, st in p.quests.items():

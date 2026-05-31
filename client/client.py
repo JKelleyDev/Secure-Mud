@@ -113,30 +113,33 @@ def render_stats(ev: dict) -> str:
 
 
 def render_map(ev: dict) -> str:
-    """Format a 'map' event into a compass-style minimap."""
-    title = ev.get("center_title", "?")
-    exits = ev.get("exits", {}) or {}
-    n = exits.get("north", "")
-    s = exits.get("south", "")
-    e = exits.get("east", "")
-    w = exits.get("west", "")
-    u = exits.get("up", "")
-    d = exits.get("down", "")
-    here = title[:14]
-    extra = []
-    if u:
-        extra.append(f"↑ up:   {u}")
-    if d:
-        extra.append(f"↓ down: {d}")
+    """Format a 'room' event into a compass-style minimap.
+
+    Server sends exits as {direction: destination_title}; we lay them out
+    on a compass and tuck up/down below it.
+    """
+    here = (ev.get("title") or "?")[:18]
+    exits = ev.get("exits") or {}
+    def short(s: str, n: int = 10) -> str:
+        return s[:n] if s else "·"
+    n_ = short(exits.get("north", ""))
+    s_ = short(exits.get("south", ""))
+    e_ = short(exits.get("east", ""))
+    w_ = short(exits.get("west", ""))
     body = (
-        f"     {n}\n"
-        f"       ↑\n"
-        f"{w:>7} ◆ {e}\n"
-        f"       ↓\n"
-        f"     {s}\n"
+        f"      {n_:^10}\n"
+        f"            ↑\n"
+        f"{w_:>10} ◆ {e_:<10}\n"
+        f"            ↓\n"
+        f"      {s_:^10}\n"
         f"\n"
-        f"  {here}"
+        f"  ▸ {here}"
     )
+    extra = []
+    if exits.get("up"):
+        extra.append(f"  ↑ up:   {short(exits['up'])}")
+    if exits.get("down"):
+        extra.append(f"  ↓ down: {short(exits['down'])}")
     if extra:
         body += "\n" + "\n".join(extra)
     return body
@@ -212,23 +215,50 @@ class MUDClient(App):
                 Text.from_ansi(f"!! {event.get('text', '')}"))
         elif t == "stats":
             self.query_one("#stats", Static).update(render_stats(event))
-        elif t == "map":
+        elif t == "room":
+            # 'room' drives two panels: the Narrative gets the formatted
+            # description, the Map gets the compass.
+            self._render_room_to_narrative(event)
             self.query_one("#map", Static).update(render_map(event))
         elif t == "encounter":
-            art = load_art(event.get("art"))
-            self.query_one("#scene", Static).update(art or "(quiet)")
-        elif t == "room":
-            # Wave 1: rooms still arrive as narrate strings. When the
-            # server starts emitting structured 'room' events this branch
-            # will format them into the Narrative panel + trigger a map
-            # refresh.
-            self.query_one("#narrative", RichLog).write(event.get("text", str(event)))
+            self._render_encounter(event)
         elif t == "quit":
             self.exit()
         else:
             # Unknown event type — surface it so server protocol bugs
             # are visible during development.
             self.query_one("#narrative", RichLog).write(f"[?{t}] {event}")
+
+    def _render_room_to_narrative(self, ev: dict) -> None:
+        narr = self.query_one("#narrative", RichLog)
+        out = Text()
+        out.append("\n" + (ev.get("title") or "?") + "\n", style="bold")
+        out.append((ev.get("desc") or "") + "\n")
+        if ev.get("storyline"):
+            out.append((ev["storyline"]) + "\n", style="yellow")
+        for mob in ev.get("mobs", []):
+            tag = " [BOSS]" if mob.get("boss") else ""
+            color = "magenta" if mob.get("npc") else "red"
+            out.append(f"  {mob.get('name', '?')} is here.{tag}\n", style=color)
+        for o in ev.get("others", []):
+            out.append(f"  {o} is here.\n", style="green")
+        if ev.get("shop"):
+            out.append("  A shopkeeper offers wares (type 'shop').\n", style="yellow")
+        exits = ev.get("exits") or {}
+        if exits:
+            out.append("Exits: " + ", ".join(exits.keys()) + "\n", style="cyan")
+        narr.write(out)
+
+    def _render_encounter(self, ev: dict) -> None:
+        art_key = ev.get("art")
+        caption = ev.get("caption") or ""
+        if art_key:
+            content = load_art(art_key) or f"[ {art_key} ]"
+        else:
+            content = "(quiet)"
+        if caption:
+            content = f"{content}\n\n{caption}"
+        self.query_one("#scene", Static).update(content)
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value

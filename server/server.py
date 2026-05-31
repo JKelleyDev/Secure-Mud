@@ -98,7 +98,11 @@ def handle_client(conn, addr):
                                                register=(parts[0] == "register"))
                 if ok:
                     c.send(col(f"Welcome, {c.session.player.name}!", "grn"))
-                    c.send(ENGINE.handle(c.session, "look"))
+                    # cmd_look now emits a structured 'room' event and
+                    # returns "" — skip the empty narrate.
+                    out = ENGINE.handle(c.session, "look")
+                    if out:
+                        c.send(out)
                     break
                 c.send(col(err, "red"))
             else:
