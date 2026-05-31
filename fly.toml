@@ -1,0 +1,46 @@
+# Fly.io deployment config for SecureMUD.
+#
+# First-time setup:
+#   fly auth login
+#   fly apps create securemud                            # pick a unique name
+#   fly volumes create mud_data --size 1 --region ord    # persistent state
+#   fly deploy
+#
+# Subsequent deploys:
+#   fly deploy
+#   fly logs                                             # tail server output
+#   fly status                                           # machine + volume info
+#
+# IMPORTANT: change `app` below to something unique — "securemud" is likely taken.
+
+app = "securemud"
+primary_region = "ord"
+
+[build]
+
+# Game traffic: raw TLS on port 4443. Fly does NOT terminate TLS for us
+# (that's HTTP-only on Fly); TLS is handled by Python's ssl module inside
+# server.py, so the cert in the container is what clients verify against.
+[[services]]
+  internal_port = 4443
+  protocol = "tcp"
+  # The MUD must stay running — players hold live TCP sessions and the
+  # engine has a background tick thread. Don't let Fly suspend it.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 4443
+
+# Persistent volume: players.json and world_state.json (and ideally the
+# self-signed cert — see README "Cert persistence caveat") live here so
+# deploys don't wipe state.
+[mounts]
+  source = "mud_data"
+  destination = "/app/data"
+
+# Smallest free-tier-eligible machine. Plenty for a portfolio-scale MUD.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

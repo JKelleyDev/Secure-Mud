@@ -50,6 +50,8 @@ help                           # full command list
 │   ├── players.json        # accounts, inventory, levels (saved every tick)
 │   └── world_state.json    # current storyline phase, clan control
 ├── test_integration.py     # smoke test of the full server/client flow
+├── Dockerfile              # production container image (see Deployment)
+├── fly.toml                # Fly.io deploy config (see Deployment)
 ├── CLAUDE.md → AGENTS.md   # project intent / model handoff notes
 └── README.md               # this file
 ```
@@ -388,6 +390,102 @@ Want `[npc_dialogue: ...]` or `[weather: ...]` entries? Three steps in
 1. Add the type to `SCHEMAS` (and `DEFAULTS` if needed).
 2. Add a bucket dict in `load_story` and export it.
 3. Import the new dict from `engine.py` (or wherever consumes it).
+
+---
+
+# Deployment
+
+SecureMUD is a long-lived TLS socket server, not an HTTP app — it needs a
+host that supports persistent TCP on a custom port. The recommended setup
+for portfolio / friends-only scale is two free services:
+
+| Component     | Host    | Notes                              |
+|---------------|---------|------------------------------------|
+| Game server   | Fly.io  | Docker container, TCP on :4443     |
+| Landing page  | Vercel  | Static or Next.js, install + docs  |
+| Domain        | optional | ~$10/yr; not required to start    |
+
+**Do NOT** try to host the game server on Vercel / Netlify / Cloudflare
+Workers / AWS Lambda. Those are HTTP-only and time-capped (≤300s) —
+SecureMUD needs persistent TCP and an always-on background tick.
+
+### Game server on Fly.io
+
+The repo includes `Dockerfile` and `fly.toml`. The Dockerfile installs
+`cryptography`, copies `server/` and `story/`, and runs the server on
+port 4443. The fly.toml exposes TCP/4443 (TLS terminates inside Python,
+not at Fly's edge) and mounts a 1GB volume at `/app/data` for player
+state.
+
+```bash
+brew install flyctl                                    # or curl -L https://fly.io/install.sh | sh
+fly auth signup                                        # or fly auth login
+# edit fly.toml: change app = "securemud" to a unique name
+fly apps create <your-app-name>
+fly volumes create mud_data --size 1 --region ord
+fly deploy
+fly logs                                               # tail server output
+fly status                                             # machine + volume info
+```
+
+Once deployed the server is reachable at `<your-app-name>.fly.dev:4443`.
+Players connect with:
+
+```bash
+python3 client/client.py <your-app-name>.fly.dev 4443 --cafile server.crt
+```
+
+**Cert persistence caveat.** `server/server.py` currently writes the
+self-signed cert to `/app/server.crt`, which is *not* on the Fly volume.
+After the first deploy the cert exists; on the next `fly deploy` the
+image is rebuilt without the cert, the server regenerates a new one, and
+any client pinned to the old cert will fail TLS verification. Two ways
+to fix:
+
+1. **Cert on the volume** (recommended). Change the `CERT` / `KEY` paths
+   at the top of `server/server.py` from `..` to `os.path.join("..", "data")`
+   so they resolve to `/app/data/server.crt` (on the volume) instead of
+   `/app/server.crt` (in the ephemeral image).
+2. **Cert baked into the image.** Generate the cert once locally with
+   `openssl req -x509 ...`, commit it to the repo, and skip
+   `ensure_cert()` in production. Less hassle long-term; commits a public
+   cert (not the private key — `*.key` is gitignored).
+
+**Scaling caveat.** The engine holds shared state in memory under a
+single re-entrant lock; multiple Fly machines would diverge. Keep
+`min_machines_running = 1` until you migrate to the Postgres backend
+(see roadmap below).
+
+### Landing page on Vercel
+
+A single Next.js page (or even a static HTML file) is enough. Put it in
+a `landing/` subdir to keep it separate from the server code, and host
+the `server.crt` file so clients can download and trust it without
+having to clone the whole repo.
+
+Suggested page content:
+- One-paragraph pitch (TLS-secured MUD, encrypted, classic terminal feel)
+- Copy-pasteable connect block:
+  ```bash
+  curl -O https://<your-landing>.vercel.app/server.crt
+  git clone https://github.com/JKelleyDev/Secure-Mud.git
+  cd Secure-Mud
+  python3 client/client.py <your-app-name>.fly.dev 4443 --cafile ../server.crt
+  ```
+- "First moves" example (`register`, `look`, `south → talk → accept`)
+- Command reference (re-use the table above)
+- Link to the GitHub repo
+
+Deploy with:
+```bash
+npm i -g vercel
+cd landing
+vercel              # interactive: links the project
+vercel --prod       # promotes to production
+```
+
+The free tier covers more traffic than any portfolio site will see, and
+supports custom domains if you grab one later.
 
 ---
 
